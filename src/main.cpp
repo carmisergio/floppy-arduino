@@ -53,7 +53,7 @@ void loop()
                     switch (fc)
                     {
                     case OK:
-                        // print_hex(buf, 515);
+                        print_hex(buf, 515);
                         break;
                     case SEEK_ERROR:
                         Serial.println("Seek error!");

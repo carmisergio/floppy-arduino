@@ -7,15 +7,17 @@
 
 #include "floppy.h"
 
-asm("   .equ TIFR1,    0x16\n" // timer 1 flag register
-    "   .equ TOV,     0\n"     // overflow flag
-    "   .equ OCF,     1\n"     // output compare flag
-    "   .equ ICF,     5\n"     // input capture flag
-    "   .equ TCCRC1,   0x82\n" // timer 1 control register C
-    "   .equ FOC,     0x80\n"  // force output compare flag
-    "   .equ TCNTL1,   0x84\n" // timer 1 counter (low byte)
-    "   .equ ICRL1,    0x86\n" // timer 1 input capture register (low byte)
-    "   .equ OCRL1,    0x88\n" // timer 1 output compare register (low byte)
+asm("   .equ TIFR1,    0x16\n"  // timer 1 flag register
+    "   .equ TIFR2,     0x17\n" // timer 2 flag register
+    "   .equ TOV,     0\n"      // overflow flag
+    "   .equ OCF,     1\n"      // output compare flag
+    "   .equ ICF,     5\n"      // input capture flag
+    "   .equ TCCRC1,   0x82\n"  // timer 1 control register C
+    "   .equ FOC,     0x80\n"   // force output compare flag
+    "   .equ TCNTL1,   0x84\n"  // timer 1 counter (low byte)
+    "   .equ ICRL1,    0x86\n"  // timer 1 input capture register (low byte)
+    "   .equ OCRL1,    0x88\n"  // timer 1 output compare register (low byte)
+    "   .equ TCNT2,    0xB2\n"  // timer 2 current count register
 );
 
 Floppy::Floppy()
@@ -94,9 +96,11 @@ byte Floppy::read_data(byte *buffer, unsigned int n)
 
     // Setup timer 2 for exiting in case no pulses are received
     TCCR2A = 0;
-    TCCR1B = bit(CS22) | bit(CS21) | bit(CS20); // Prescaler 1024 -> roughly 1 ms period
+    TCCR2B = bit(CS22) | bit(CS21) | bit(CS20); // Prescaler 1024 -> roughly 1 ms period
 
     select_drive(true);
+
+    byte ec; // Error code
 
     asm volatile(
         //
@@ -110,13 +114,17 @@ byte Floppy::read_data(byte *buffer, unsigned int n)
         // Clobbers:
         //  - r0
         ".macro MSPULSE\n\t"
-        "               sbis    TIFR1, ICF\n\t" // (1/2) Check if there has been an input capture
-        "               rjmp    .-4\n\t"        // (2) Loop if not
-        "               lds     r0, ICRL1\n\t"  // (2) Get time of input capture
+        "   0:          sbic    TIFR1, ICF\n\t" // (1/2) Check if there has been an input capture
+        "               rjmp    1f\n\t"         // (2) Loop if not
+        "               sbic    TIFR2, TOV\n\t" // Check timeout
+        "               rjmp    no_pulse\n\t"   // There's no pulse
+        "               rjmp    0b\n\t"
+        "   1:          lds     r0, ICRL1\n\t"  // (2) Get time of input capture
         "               sbi     TIFR1, ICF\n\t" // (2) Clear input capture happened flag
         "               mov     r18, r0\n\t"    // (1)
         "               sub     r18, r17\n\t"   // (1) Compute pulse length (r17 contains last pulse time)
         "               mov     r17, r0\n\t"    // (1) r17 is now new pulse time
+        "               sts     TCNT2, r19\n\t" // Clear timeout
         ".endm\n\t"
 
         //
@@ -202,6 +210,12 @@ byte Floppy::read_data(byte *buffer, unsigned int n)
         "               ldi     r20, 40\n\t" // Minimum medium pulse
         "               ldi     r21, 56\n\t" // Minimum long pulse
 
+        // Default error code = 0 -> OK
+        "               eor     %[ec], %[ec]\n\t"
+        "               ldi     r19, 0\n\t"     // Used for resetting timeout
+        "               sts     TCNT2, r19\n\t" // Clear timeout
+        "               sbi     TIFR2, TOV\n\t" // Clear timeout flag
+
         // Find sync sequence (80 zeroes -> 80 S pulses)
         "   syncstart:\n\t"
         "               ldi     r22, 80\n\t" // Number of short pulses in sync sequence
@@ -268,11 +282,14 @@ byte Floppy::read_data(byte *buffer, unsigned int n)
         "               STOREBIT    1, rddone\n\t"        // Store 1 bit
         "               rjmp        rdo\n\t"              // Go to read odd
 
+        "   no_pulse:   ldi         r17, 1\n\t"     // Use r17 because its value is not needed anymore
+        "               mov         %[ec], r17\n\t" // No pulse in timeout: ec = 1 -> NO_PULSE
+
         // Read done!
-        "rddone:\n\t"
-        :
+        "   rddone:\n\t"
+        : [ec] "=r"(ec)
         : [outbuf] "x"(buffer), "z"(n - 1) // -1 because STOREBIT exits when r30:r31 is NEGATIVE
-        : "r17", "r18", "r20", "r21", "r22", "r23", "r24", "r28", "r29");
+        : "r17", "r18", "r20", "r21", "r22", "r23", "r24", "r28", "r29", "r19");
 
     select_drive(false);
 
@@ -280,7 +297,7 @@ byte Floppy::read_data(byte *buffer, unsigned int n)
     TCCR1B = 0;
     TCCR2B = 0;
 
-    return 0;
+    return ec;
 }
 
 FloppyError Floppy::initialize()
@@ -347,7 +364,11 @@ FloppyError Floppy::read_sector(byte *buffer, unsigned short cylinder, unsigned 
         noInterrupts();
 
         // Try to read Address Block
-        read_data(tmpbuf, 7);
+        if (read_data(tmpbuf, 7) > 0)
+        {
+            attempts--;
+            continue;
+        }
 
         // Check if what we read was an address block
         if (tmpbuf[0] == 0xFE)
@@ -376,7 +397,10 @@ FloppyError Floppy::read_sector(byte *buffer, unsigned short cylinder, unsigned 
 
     // We've read the correct address block
     // Read actual data
-    read_data(buffer, SECTOR_SIZE + 3);
+    if (read_data(buffer, SECTOR_SIZE + 3) > 0)
+    {
+        return FloppyError::NO_PULSE;
+    }
 
     // Data mark is not correct
     if (buffer[0] != 0xFB)

@@ -20,6 +20,7 @@ enum FloppyError
     SEEK_ERROR,
     SECTOR_NOT_FOUND,
     INCORRECT_DATA_MARK,
+    NO_PULSE,
     OK,
 };
 
