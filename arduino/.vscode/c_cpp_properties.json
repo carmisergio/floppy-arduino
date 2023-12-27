@@ -8,8 +8,8 @@
         {
             "name": "PlatformIO",
             "includePath": [
-                "/home/sergio/dev/floppy-arduino/include",
-                "/home/sergio/dev/floppy-arduino/src",
+                "/home/sergio/dev/floppy-arduino/arduino/include",
+                "/home/sergio/dev/floppy-arduino/arduino/src",
                 "/home/sergio/.platformio/packages/framework-arduino-avr/cores/arduino",
                 "/home/sergio/.platformio/packages/framework-arduino-avr/variants/standard",
                 "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/EEPROM/src",
@@ -22,8 +22,8 @@
             "browse": {
                 "limitSymbolsToIncludedHeaders": true,
                 "path": [
-                    "/home/sergio/dev/floppy-arduino/include",
-                    "/home/sergio/dev/floppy-arduino/src",
+                    "/home/sergio/dev/floppy-arduino/arduino/include",
+                    "/home/sergio/dev/floppy-arduino/arduino/src",
                     "/home/sergio/.platformio/packages/framework-arduino-avr/cores/arduino",
                     "/home/sergio/.platformio/packages/framework-arduino-avr/variants/standard",
                     "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/EEPROM/src",

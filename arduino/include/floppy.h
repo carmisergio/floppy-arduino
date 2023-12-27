@@ -21,6 +21,7 @@ enum FloppyError
     SECTOR_NOT_FOUND,
     INCORRECT_DATA_MARK,
     NO_PULSE,
+    CRC,
     OK,
 };
 
@@ -29,6 +30,8 @@ class Floppy
 {
     // Floppy state
     unsigned short cur_track;
+    bool motor_on;
+    unsigned long last_op_time;
 
     // Set floppy drive selection
     static void select_drive(bool selected);
@@ -39,26 +42,37 @@ class Floppy
     // Set head
     static void set_head(unsigned short head);
 
+    // Set motor on
+    void set_motor_state(bool state);
+
     // Step n steps
     static void step(unsigned short n);
 
     // Find tarck 0
     static bool go_to_track_0();
 
+    // Save last operation time
+    void save_last_op_time();
+
 public:
     bool initialized;
 
-    static byte read_data(byte *buffer, unsigned int n);
+    byte read_data(byte *buffer, unsigned int n);
 
     // Constructor
     Floppy();
+
+    void setup();
 
     // Initialize floppy
     FloppyError initialize();
 
     // Seek to track
-    FloppyError seek(unsigned short track);
+    FloppyError seek(byte track);
 
     // Read sector
-    FloppyError read_sector(byte *buffer, unsigned short cylinder, unsigned short head, unsigned short sector);
+    FloppyError read_sector(byte *buffer, byte cylinder, byte head, byte sector);
+
+    // Run automatic motor off routines
+    void auto_motor_off();
 };

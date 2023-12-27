@@ -7,6 +7,8 @@
 
 #include "floppy.h"
 
+#include "crc.h"
+
 asm("   .equ TIFR1,    0x16\n"  // timer 1 flag register
     "   .equ TIFR2,     0x17\n" // timer 2 flag register
     "   .equ TOV,     0\n"      // overflow flag
@@ -22,17 +24,11 @@ asm("   .equ TIFR1,    0x16\n"  // timer 1 flag register
 
 Floppy::Floppy()
 {
-    pinMode(PIN_DRVSEL, OUTPUT);
-    pinMode(PIN_DIR, OUTPUT);
-    pinMode(PIN_STEP, OUTPUT);
-    pinMode(PIN_HEADSEL, OUTPUT);
-
-    pinMode(PIN_TRACK0, INPUT_PULLUP);
-    pinMode(PIN_READDATA, INPUT_PULLUP);
-
-    select_drive(false);
 
     initialized = false;
+    cur_track = 0;
+    motor_on = false;
+    save_last_op_time();
 }
 
 void Floppy::select_drive(bool selected)
@@ -48,6 +44,19 @@ void Floppy::set_direction(bool direction)
 void Floppy::set_head(unsigned short head)
 {
     digitalWrite(PIN_HEADSEL, (head == 0));
+}
+
+void Floppy::set_motor_state(bool state)
+{
+    // Only perform operation if requested state is different from current
+    if (motor_on != state)
+    {
+        motor_on = state;
+        digitalWrite(PIN_MOTOR, !state);
+
+        if (state)
+            delay(100); // Small delay to allow motor to spin up
+    }
 }
 
 void Floppy::step(unsigned short n)
@@ -98,6 +107,7 @@ byte Floppy::read_data(byte *buffer, unsigned int n)
     TCCR2A = 0;
     TCCR2B = bit(CS22) | bit(CS21) | bit(CS20); // Prescaler 1024 -> roughly 1 ms period
 
+    // Select drive
     select_drive(true);
 
     byte ec; // Error code
@@ -300,8 +310,31 @@ byte Floppy::read_data(byte *buffer, unsigned int n)
     return ec;
 }
 
+void Floppy::save_last_op_time()
+{
+    last_op_time = millis();
+}
+
+void Floppy::setup()
+{
+    pinMode(PIN_DRVSEL, OUTPUT);
+    pinMode(PIN_DIR, OUTPUT);
+    pinMode(PIN_STEP, OUTPUT);
+    pinMode(PIN_HEADSEL, OUTPUT);
+    pinMode(PIN_MOTOR, OUTPUT);
+
+    pinMode(PIN_TRACK0, INPUT_PULLUP);
+    pinMode(PIN_READDATA, INPUT_PULLUP);
+
+    motor_on = true;
+    set_motor_state(false);
+    select_drive(false);
+    save_last_op_time();
+}
+
 FloppyError Floppy::initialize()
 {
+
     // Go to track 0
     if (!go_to_track_0())
         return FloppyError::TRACK0_NOT_FOUND;
@@ -312,7 +345,7 @@ FloppyError Floppy::initialize()
     return FloppyError::OK;
 }
 
-FloppyError Floppy::seek(unsigned short track)
+FloppyError Floppy::seek(byte track)
 {
     // Check if drive initialized
     if (!initialized)
@@ -342,12 +375,17 @@ FloppyError Floppy::seek(unsigned short track)
     return FloppyError::OK;
 }
 
-FloppyError Floppy::read_sector(byte *buffer, unsigned short cylinder, unsigned short head, unsigned short sector)
+FloppyError Floppy::read_sector(byte *buffer, byte cylinder, byte head, byte sector)
 {
     FloppyError ec;
 
+    save_last_op_time();
+
     // Select head
     set_head(head);
+
+    // Turn on motor
+    set_motor_state(true);
 
     // Seek to track
     ec = seek(cylinder);
@@ -376,16 +414,17 @@ FloppyError Floppy::read_sector(byte *buffer, unsigned short cylinder, unsigned 
             if (tmpbuf[1] != cylinder)
             {
                 cur_track = tmpbuf[1]; // Save our current position
-                Serial.print("Seek error: ");
-                Serial.println(tmpbuf[1]);
+                                       // Serial.print("Seek error: ");
+                                       // Serial.println(tmpbuf[1]);
+                interrupts();
                 return FloppyError::SEEK_ERROR;
             }
 
             if (tmpbuf[2] == head && tmpbuf[3] == sector)
             {
-
-                // TODO implement CRC
-                break;
+                // Check CRC
+                if (calc_crc(tmpbuf, 5) == 256u * tmpbuf[5] + tmpbuf[6])
+                    break;
             }
         }
 
@@ -393,22 +432,39 @@ FloppyError Floppy::read_sector(byte *buffer, unsigned short cylinder, unsigned 
     }
 
     if (attempts == 0)
+    {
+        interrupts();
         return FloppyError::SECTOR_NOT_FOUND;
+    }
 
     // We've read the correct address block
     // Read actual data
     if (read_data(buffer, SECTOR_SIZE + 3) > 0)
     {
+        interrupts();
         return FloppyError::NO_PULSE;
     }
 
     // Data mark is not correct
     if (buffer[0] != 0xFB)
+    {
+        interrupts();
         return FloppyError::INCORRECT_DATA_MARK;
-
-    // TODO implement CRC
+    }
 
     interrupts();
 
-    return FloppyError::OK;
+    // Check CRC
+    if (calc_crc(buffer, 513) == 256u * buffer[513] + buffer[514])
+        return FloppyError::OK;
+
+    return FloppyError::CRC;
+}
+
+void Floppy::auto_motor_off()
+{
+    if (motor_on && (millis() - last_op_time) > MOTOR_OFF_TIMEOUT)
+    {
+        set_motor_state(false);
+    }
 }
