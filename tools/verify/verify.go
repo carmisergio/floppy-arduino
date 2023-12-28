@@ -28,6 +28,7 @@ const HEADS byte = 2
 const SECTORS byte = 18
 const SECTOR_SIZE int = 512
 
+// Serial communication
 func write_byte(port serial.Port, data byte) error {
 	buf := []byte{data}
 
@@ -139,7 +140,7 @@ func connect_and_handshake(name string) (serial.Port, error) {
 	}
 
 	// Wait for Arduino to reset
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(2000 * time.Millisecond)
 
 	// Clear any stuff still in input buffer
 	port.ResetInputBuffer()
@@ -156,18 +157,18 @@ func connect_and_handshake(name string) (serial.Port, error) {
 	return port, nil
 }
 
-func find_arduino() (serial.Port, error) {
+func find_arduino() (serial.Port, string, error) {
 
 	// Get serial ports list
 	port_names, err := serial.GetPortsList()
 
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// If there are no ports available
 	if len(port_names) == 0 {
-		return nil, errors.New("no serial ports available")
+		return nil, "", errors.New("no serial ports available")
 	}
 
 	// Repeat for each available port
@@ -178,13 +179,13 @@ func find_arduino() (serial.Port, error) {
 
 		// If handshake succesful, use this port
 		if err == nil {
-			return port, nil
+			return port, name, nil
 		}
 
 		// fmt.Println(err)
 	}
+	return nil, "", errors.New("unable to find Arduino")
 
-	return nil, errors.New("unable to find Arduino")
 }
 
 func do_initialize(port serial.Port) error {
@@ -264,25 +265,89 @@ func do_read_sector(port serial.Port, cylinder byte, head byte, sector byte) ([]
 	return buf, nil
 }
 
-func do_verify(port serial.Port) {
+func print_table_header() {
+
+	sectorspace := int(SECTORS) * 3
+
+	fmt.Println()
+	fmt.Print("   ")
+	for head := byte(0); head < HEADS; head++ {
+		for space := 0; space < (sectorspace-6)/2; space++ {
+			fmt.Print(" ")
+		}
+		PrtCol(fmt.Sprintf("HEAD %d", head), ColorWhiteBold)
+		for space := 0; space < (sectorspace-6)/2; space++ {
+			fmt.Print(" ")
+		}
+	}
+	fmt.Println()
+	fmt.Print("   ")
+	for head := byte(0); head < HEADS; head++ {
+		for sector := byte(1); sector <= SECTORS; sector++ {
+			fmt.Printf("%3d", sector)
+		}
+	}
+	fmt.Println()
+}
+
+func verify_sector_retries(port serial.Port, cylinder byte, head byte, sector byte, retries uint) (uint, error) {
+
+	var err error
+
+	tries := uint(0)
+
+	for tries <= retries {
+		_, err = do_read_sector(port, cylinder, head, sector)
+
+		if err == nil {
+			return tries, nil
+		}
+
+		tries++
+	}
+
+	return tries, err
+}
+
+func do_verify(port serial.Port, start_track OptionalByte, end_track OptionalByte, max_retries OptionalUint) (uint, uint, uint) {
 
 	var track byte
 	var head byte
 	var sector byte
 
-	for track = 0; track < TRACKS; track++ {
+	good := uint(0)
+	bad := uint(0)
+	degraded := uint(0)
 
-		fmt.Printf("%-2d: ", track)
+	if !start_track.has_value {
+		start_track.value = 0
+	}
+	if !end_track.has_value {
+		end_track.value = TRACKS - 1
+	}
+
+	print_table_header()
+
+	for track = start_track.value; track <= end_track.value; track++ {
+
+		fmt.Printf("%-2d ", track)
 
 		for head = 0; head < HEADS; head++ {
 			for sector = 1; sector <= SECTORS; sector++ {
 
-				_, err := do_read_sector(port, track, head, sector)
+				tries, err := verify_sector_retries(port, track, head, sector, max_retries.value)
 
 				if err != nil {
-					fmt.Print("X")
+					PrtCol(" E ", ColorBgRed)
+					bad++
 				} else {
-					fmt.Print("=")
+					if tries == 0 {
+						PrtCol(" S ", ColorBgGreen)
+						good++
+					} else {
+						PrtCol(fmt.Sprintf("%3d", tries), ColorBgYellow)
+						degraded++
+					}
 				}
 
 			}
@@ -290,20 +355,49 @@ func do_verify(port serial.Port) {
 
 		fmt.Println()
 	}
+
+	return good, bad, degraded
 }
 
 func main() {
 
+	// Parse arguments
+	conf, conf_res := parse_args()
+
+	// Check result of configuration
+	switch conf_res {
+	case ConfigERR:
+		os.Exit(1)
+	case ConfigExitCleanly:
+		os.Exit(0)
+	}
+
 	var err error
 	var port serial.Port
+	var name string
 
 	// Find serial port
-	port, err = find_arduino()
-	if err != nil {
-		fmt.Println("Unable to find Arduino!")
-		os.Exit(1)
+	if !conf.device.has_value {
+		fmt.Println("Trying to find Arduino...")
+		port, name, err = find_arduino()
+		if err != nil {
+			PrtCol("Error: ", ColorRedHI)
+			fmt.Println("unable to find Arduino")
+			os.Exit(1)
+		}
+	} else {
+		fmt.Println("Connecting to Arduino...")
+		port, err = connect_and_handshake(conf.device.value)
+		if err != nil {
+			PrtCol("Error: ", ColorRedHI)
+			fmt.Printf("unable to connect to Arduino on port %s: %s\n", conf.device.value, err)
+			os.Exit(1)
+		}
+		name = conf.device.value
 	}
-	fmt.Println("Connected!")
+
+	PrtCol("Connected ", ColorGreenHI)
+	fmt.Printf("on port %s\n", name)
 
 	// CTRL-C handler
 	c := make(chan os.Signal, 1)
@@ -319,22 +413,31 @@ func main() {
 	}()
 
 	// Initialize drive
-	fmt.Println("Initializing drive...")
 	err = do_initialize(port)
 
 	if err != nil {
-		fmt.Println("Drive initalization failed!")
+		PrtCol("Error: ", ColorRedHI)
+		fmt.Println("drive initalization failed!")
 		port.Close()
 		os.Exit(2)
 	}
 
-	fmt.Println("Drive initialized!")
-
+	// Do disk verification
 	fmt.Println("Veifying disk...")
+	good, bad, degraded := do_verify(port, conf.start_track, conf.end_track, conf.max_retries)
 
-	// Try reading a few sectors
+	PrtCol("Done!\n", ColorGreenHI)
+	fmt.Printf("%d sectors ", good)
+	PrtCol("good", ColorGreenHI)
+	fmt.Printf(", %d sectors ", bad)
+	PrtCol("bad", ColorRedHI)
 
-	do_verify(port)
+	if conf.max_retries.value > 0 {
+		fmt.Printf(", %d sectors ", degraded)
+		PrtCol("degraded", ColorYellowHI)
+	}
+
+	fmt.Println()
 
 	port.Close()
 }
