@@ -9,34 +9,37 @@ import (
 // Arguments
 const ARG_DEVICE string = "--device"
 const ARG_DEVICE_SHORT string = "-d"
-const ARG_START_TK string = "--start-track"
-const ARG_START_TK_SHORT string = "-s"
-const ARG_END_TK string = "--end-track"
-const ARG_END_TK_SHORT string = "-e"
+const ARG_START_BLK string = "--start-block"
+const ARG_START_BLK_SHORT string = "-s"
+const ARG_END_BLK string = "--end-block"
+const ARG_END_BLK_SHORT string = "-e"
 const ARG_RETRIES string = "--retries"
 const ARG_RETRIES_SHORT string = "-r"
+const ARG_IGNORE_ERRORS string = "--ignore-errors"
+const ARG_IGNORE_ERRORS_SHORT string = "-i"
 const ARG_HELP string = "--help"
 const ARG_HELP_SHORT string = "-h"
 
 // Messages
-const MSG_HELP string = "Usage: verify [OPTIONS]\nOptions: \n \t-d --device: Serial port of Arduino\n \t-s --start-track: Track to start verification from\n \t-e --end-track: Track to end verification on\n \t-r --retires: Number of read retries\n \t-h --help: Display this message"
-const MSG_OPT_VALUE_MISSING string = "verify: missing option value"
-const MSG_OPT_VALUE_INVALID string = "verify: invalid option value"
-const MSG_BAD_OPTION string = "verify: bad option"
-const MSG_TRY_HELP string = "Try 'verify --help' for more information"
+const MSG_HELP string = "Usage: disk2img [OPTIONS] OUT_FILE\nOptions: \n \t-d --device: Serial port of Arduino\n \t-s --start-block: First block to read\n \t-e --end-block: Last block to read\n \t-r --retires: Number of read retries\n \t-i --ignore-errors: Ignore read errors\n \t-h --help: Display this message"
+const MSG_OUT_FILE_MISSING string = "disk2img: missing out file"
+const MSG_OPT_VALUE_MISSING string = "disk2img: missing option value"
+const MSG_OPT_VALUE_INVALID string = "disk2img: invalid option value"
+const MSG_BAD_OPTION string = "disk2img: bad option"
+const MSG_TRY_HELP string = "Try 'disk2img --help' for more information"
 
 // Deafaults
-const DEFAULT_MAX_RETRIES uint = 1
+const DEFAULT_MAX_RETRIES uint = 5
 
 type OptionalString struct {
 	value     string
 	has_value bool
 }
 
-type OptionalByte struct {
-	value     byte
-	has_value bool
-}
+// type OptionalByte struct {
+// 	value     byte
+// 	has_value bool
+// }
 
 type OptionalUint struct {
 	value     uint
@@ -44,10 +47,12 @@ type OptionalUint struct {
 }
 
 type Config struct {
-	device      OptionalString
-	start_track OptionalByte
-	end_track   OptionalByte
-	max_retries OptionalUint
+	device        OptionalString
+	start_block   OptionalUint
+	end_block     OptionalUint
+	max_retries   OptionalUint
+	ignore_errors bool
+	out_file      OptionalString
 }
 
 type ConfigResult byte
@@ -87,19 +92,19 @@ func parse_args() (Config, ConfigResult) {
 				return conf, ConfigERR
 			}
 
-		} else if args[i] == ARG_START_TK || args[i] == ARG_START_TK_SHORT {
-			// --start-track or -s
+		} else if args[i] == ARG_START_BLK || args[i] == ARG_START_BLK_SHORT {
+			// --start-block or -s
 
 			// Try to consume option
 			// Check if there is a value to consume
 			i++
 			if i < len(args) {
 
-				value, err := strconv.ParseInt(args[i], 10, 8)
+				value, err := strconv.ParseInt(args[i], 10, 32)
 
 				if err == nil {
-					conf.start_track.value = byte(value)
-					conf.start_track.has_value = true
+					conf.start_block.value = uint(value)
+					conf.start_block.has_value = true
 				} else {
 					fmt.Println(MSG_OPT_VALUE_INVALID)
 					fmt.Println(MSG_TRY_HELP)
@@ -111,19 +116,19 @@ func parse_args() (Config, ConfigResult) {
 				fmt.Println(MSG_TRY_HELP)
 				return conf, ConfigERR
 			}
-		} else if args[i] == ARG_END_TK || args[i] == ARG_END_TK_SHORT {
-			// --end-track or -e
+		} else if args[i] == ARG_END_BLK || args[i] == ARG_END_BLK_SHORT {
+			// --end-block or -e
 
 			// Try to consume option
 			// Check if there is a value to consume
 			i++
 			if i < len(args) {
 
-				value, err := strconv.ParseInt(args[i], 10, 8)
+				value, err := strconv.ParseInt(args[i], 10, 32)
 
 				if err == nil {
-					conf.end_track.value = byte(value)
-					conf.end_track.has_value = true
+					conf.end_block.value = uint(value)
+					conf.end_block.has_value = true
 				} else {
 					fmt.Println(MSG_OPT_VALUE_INVALID)
 					fmt.Println(MSG_TRY_HELP)
@@ -159,10 +164,13 @@ func parse_args() (Config, ConfigResult) {
 				fmt.Println(MSG_TRY_HELP)
 				return conf, ConfigERR
 			}
+		} else if args[i] == ARG_IGNORE_ERRORS || args[i] == ARG_IGNORE_ERRORS_SHORT {
+			// --ignore-errrors or -i
+
+			conf.ignore_errors = true
 		} else {
-			fmt.Println(MSG_BAD_OPTION)
-			fmt.Println(MSG_TRY_HELP)
-			return conf, ConfigERR
+			conf.out_file.value = args[i]
+			conf.out_file.has_value = true
 		}
 	}
 
@@ -170,6 +178,13 @@ func parse_args() (Config, ConfigResult) {
 	if !conf.max_retries.has_value {
 		conf.max_retries.value = DEFAULT_MAX_RETRIES
 		conf.max_retries.has_value = true
+	}
+
+	// Check required parameters
+	if !conf.out_file.has_value {
+		fmt.Println(MSG_OUT_FILE_MISSING)
+		fmt.Println(MSG_TRY_HELP)
+		return conf, ConfigERR
 	}
 
 	return conf, ConfigOK
