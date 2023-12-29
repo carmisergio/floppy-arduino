@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/albenik/go-serial"
@@ -290,7 +291,7 @@ func read_block(port serial.Port, address uint, retries byte) ([]byte, error) {
 	// Always do at least 1 try
 	retries++
 
-	// fmt.Printf("Reading C=%d, H=%d, S=%d\n", cylinder, head, sector)
+	fmt.Printf("Reading C=%d, H=%d, S=%d\n", cylinder, head, sector)
 
 	for retries > 0 {
 		data, err = do_read_sector(port, cylinder, head, sector)
@@ -305,28 +306,22 @@ func read_block(port serial.Port, address uint, retries byte) ([]byte, error) {
 	return data, err
 }
 
-func read_blocks(port serial.Port, start_block OptionalUint, end_block OptionalUint, retries OptionalUint, ignore_errors bool) ([]byte, error) {
+func read_blocks(port serial.Port, start_block uint, end_block uint, retries uint, ignore_errors bool) ([]byte, error) {
 
-	if !start_block.has_value {
-		start_block.value = 0
-	}
-	if !end_block.has_value {
-		end_block.value = N_BLOCKS - 1
-	}
-
-	n_blocks := end_block.value - start_block.value + 1
+	n_blocks := end_block - start_block + 1
 
 	// Initialize buffer
 	blocks := make([]byte, n_blocks*SECTOR_SIZE)
 
 	for i := uint(0); i < n_blocks; i++ {
 
-		block, err := read_block(port, i+start_block.value, byte(retries.value))
+		block, err := read_block(port, i+start_block, byte(retries))
 
 		if err != nil {
 
 			// If ignore errors, skip to next block
 			if ignore_errors {
+				fmt.Printf("Ignoring error %s", err)
 				continue
 			}
 

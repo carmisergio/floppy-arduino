@@ -1,7 +1,7 @@
 package main
 
 import (
-	"flag"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -10,22 +10,35 @@ import (
 	"github.com/albenik/go-serial"
 )
 
-// This device is an example implementation of an in-memory block device
-
 type DeviceExample struct {
+	port    serial.Port
 	dataset []byte
 }
 
 func (d *DeviceExample) ReadAt(p []byte, off uint) error {
-	copy(p, d.dataset[off:int(off)+len(p)])
+
 	log.Printf("[DeviceExample] READ offset:%d len:%d\n", off, len(p))
+
+	blocks_to_read := uint(len(p) / int(SECTOR_SIZE))
+	start_block := off / SECTOR_SIZE
+
+	data, err := read_blocks(d.port, start_block, start_block+blocks_to_read-1, 5, false)
+
+	if err != nil {
+		return errors.New("read error")
+	}
+
+	// Copy data
+	copy(p, data)
+
 	return nil
 }
 
 func (d *DeviceExample) WriteAt(p []byte, off uint) error {
-	copy(d.dataset[off:], p)
-	log.Printf("[DeviceExample] WRITE offset:%d len:%d\n", off, len(p))
-	return nil
+	// copy(d.dataset[off:], p)
+	// log.Printf("[DeviceExample] WRITE offset:%d len:%d\n", off, len(p))
+	// return nil
+	return errors.New("write not supported")
 }
 
 func (d *DeviceExample) Disconnect() {
@@ -42,20 +55,7 @@ func (d *DeviceExample) Trim(off, length uint) error {
 	return nil
 }
 
-func usage() {
-	fmt.Fprintf(os.Stderr, "usage: %s /dev/nbd0\n", os.Args[0])
-	flag.PrintDefaults()
-	os.Exit(2)
-}
-
 func main() {
-	flag.Usage = usage
-	flag.Parse()
-	args := flag.Args()
-	if len(args) < 1 {
-		usage()
-	}
-
 	// Parse arguments
 	conf, conf_res := parse_args()
 
@@ -71,7 +71,7 @@ func main() {
 	var port serial.Port
 	var name string
 
-	// Find serial port
+	// Connection to arduino
 	if !conf.device.has_value {
 		fmt.Println("Trying to find Arduino...")
 		port, name, err = find_arduino()
@@ -94,10 +94,20 @@ func main() {
 	PrtCol("Connected ", ColorGreenHI)
 	fmt.Printf("on port %s\n", name)
 
-	size := uint(1024 * 1024 * 512) // 512M
+	// Initialize drive
+	err = do_initialize(port)
+
+	if err != nil {
+		PrtCol("Error: ", ColorRedHI)
+		fmt.Println("drive initalization failed!")
+		port.Close()
+		os.Exit(2)
+	}
+
+	size := uint(512 * 2880) // 512M
 	deviceExp := &DeviceExample{}
-	deviceExp.dataset = make([]byte, size)
-	device, err := CreateDevice(args[0], size, deviceExp)
+	deviceExp.port = port
+	device, err := CreateDevice(conf.nbd_device.value, size, deviceExp)
 	if err != nil {
 		fmt.Printf("Cannot create device: %s\n", err)
 		os.Exit(1)
@@ -112,7 +122,9 @@ func main() {
 		}
 	}()
 	<-sig
+
 	// Received SIGTERM, cleanup
 	fmt.Println("SIGINT, disconnecting...")
 	device.Disconnect()
+	port.Close()
 }

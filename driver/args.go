@@ -3,33 +3,26 @@ package main
 import (
 	"fmt"
 	"os"
-	"strconv"
 )
 
 // Arguments
 const ARG_DEVICE string = "--device"
 const ARG_DEVICE_SHORT string = "-d"
-const ARG_START_BLK string = "--start-block"
-const ARG_START_BLK_SHORT string = "-s"
-const ARG_END_BLK string = "--end-block"
-const ARG_END_BLK_SHORT string = "-e"
 const ARG_RETRIES string = "--retries"
 const ARG_RETRIES_SHORT string = "-r"
-const ARG_IGNORE_ERRORS string = "--ignore-errors"
-const ARG_IGNORE_ERRORS_SHORT string = "-i"
 const ARG_HELP string = "--help"
 const ARG_HELP_SHORT string = "-h"
 
 // Messages
-const MSG_HELP string = "Usage: disk2img [OPTIONS] OUT_FILE\nOptions: \n \t-d --device: Serial port of Arduino\n \t-s --start-block: First block to read\n \t-e --end-block: Last block to read\n \t-r --retires: Number of read retries\n \t-i --ignore-errors: Ignore read errors\n \t-h --help: Display this message"
-const MSG_OUT_FILE_MISSING string = "disk2img: missing out file"
-const MSG_OPT_VALUE_MISSING string = "disk2img: missing option value"
-const MSG_OPT_VALUE_INVALID string = "disk2img: invalid option value"
-const MSG_BAD_OPTION string = "disk2img: bad option"
-const MSG_TRY_HELP string = "Try 'disk2img --help' for more information"
+const MSG_HELP string = "Usage: driver [OPTIONS] NBD_DEVICE\nOptions: \n \t-d --device: Serial port of Arduino\n \t-r --retires: Number of read retries\n \t-h --help: Display this message"
+const MSG_NBD_DEVICE_MISSING string = "driver: missing nbd device"
+const MSG_OPT_VALUE_MISSING string = "driver: missing option value"
+const MSG_OPT_VALUE_INVALID string = "driver: invalid option value"
+const MSG_BAD_OPTION string = "driver: bad option"
+const MSG_TRY_HELP string = "Try 'driver --help' for more information"
 
 // Deafaults
-const DEFAULT_MAX_RETRIES uint = 1
+const DEFAULT_MAX_RETRIES uint = 5
 
 type OptionalString struct {
 	value     string
@@ -47,12 +40,9 @@ type OptionalUint struct {
 }
 
 type Config struct {
-	device        OptionalString
-	start_block   OptionalUint
-	end_block     OptionalUint
-	max_retries   OptionalUint
-	ignore_errors bool
-	out_file      OptionalString
+	device      OptionalString
+	max_retries OptionalUint
+	nbd_device  OptionalString
 }
 
 type ConfigResult byte
@@ -92,85 +82,9 @@ func parse_args() (Config, ConfigResult) {
 				return conf, ConfigERR
 			}
 
-		} else if args[i] == ARG_START_BLK || args[i] == ARG_START_BLK_SHORT {
-			// --start-block or -s
-
-			// Try to consume option
-			// Check if there is a value to consume
-			i++
-			if i < len(args) {
-
-				value, err := strconv.ParseInt(args[i], 10, 32)
-
-				if err == nil {
-					conf.start_block.value = uint(value)
-					conf.start_block.has_value = true
-				} else {
-					fmt.Println(MSG_OPT_VALUE_INVALID)
-					fmt.Println(MSG_TRY_HELP)
-					return conf, ConfigERR
-				}
-
-			} else {
-				fmt.Println(MSG_OPT_VALUE_MISSING)
-				fmt.Println(MSG_TRY_HELP)
-				return conf, ConfigERR
-			}
-		} else if args[i] == ARG_END_BLK || args[i] == ARG_END_BLK_SHORT {
-			// --end-block or -e
-
-			// Try to consume option
-			// Check if there is a value to consume
-			i++
-			if i < len(args) {
-
-				value, err := strconv.ParseInt(args[i], 10, 32)
-
-				if err == nil {
-					conf.end_block.value = uint(value)
-					conf.end_block.has_value = true
-				} else {
-					fmt.Println(MSG_OPT_VALUE_INVALID)
-					fmt.Println(MSG_TRY_HELP)
-					return conf, ConfigERR
-				}
-
-			} else {
-				fmt.Println(MSG_OPT_VALUE_MISSING)
-				fmt.Println(MSG_TRY_HELP)
-				return conf, ConfigERR
-			}
-		} else if args[i] == ARG_RETRIES || args[i] == ARG_RETRIES_SHORT {
-			// --retries or -r
-
-			// Try to consume option
-			// Check if there is a value to consume
-			i++
-			if i < len(args) {
-
-				value, err := strconv.ParseUint(args[i], 10, 32)
-
-				if err == nil {
-					conf.max_retries.value = uint(value)
-					conf.max_retries.has_value = true
-				} else {
-					fmt.Println(MSG_OPT_VALUE_INVALID)
-					fmt.Println(MSG_TRY_HELP)
-					return conf, ConfigERR
-				}
-
-			} else {
-				fmt.Println(MSG_OPT_VALUE_MISSING)
-				fmt.Println(MSG_TRY_HELP)
-				return conf, ConfigERR
-			}
-		} else if args[i] == ARG_IGNORE_ERRORS || args[i] == ARG_IGNORE_ERRORS_SHORT {
-			// --ignore-errrors or -i
-
-			conf.ignore_errors = true
 		} else {
-			conf.out_file.value = args[i]
-			conf.out_file.has_value = true
+			conf.nbd_device.value = args[i]
+			conf.nbd_device.has_value = true
 		}
 	}
 
@@ -181,8 +95,8 @@ func parse_args() (Config, ConfigResult) {
 	}
 
 	// Check required parameters
-	if !conf.out_file.has_value {
-		fmt.Println(MSG_OUT_FILE_MISSING)
+	if !conf.nbd_device.has_value {
+		fmt.Println(MSG_NBD_DEVICE_MISSING)
 		fmt.Println(MSG_TRY_HELP)
 		return conf, ConfigERR
 	}

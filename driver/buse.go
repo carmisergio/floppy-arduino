@@ -21,7 +21,7 @@ func opDeviceRead(driver BuseInterface, fp *os.File, chunk []byte, request *nbdR
 	if err := driver.ReadAt(chunk, uint(request.From)); err != nil {
 		log.Println("buseDriver.ReadAt returned an error:", err)
 		// Reply with an EPERM
-		reply.Error = 1
+		reply.Error = 5
 	}
 	buf := writeNbdReply(reply)
 	if _, err := fp.Write(buf); err != nil {
@@ -173,6 +173,7 @@ func CreateDevice(device string, size uint, buseDriver BuseInterface) (*BuseDevi
 	}
 	buseDevice.deviceFp = fp
 	ioctl(buseDevice.deviceFp.Fd(), NBD_SET_SIZE, uintptr(size))
+	ioctl(buseDevice.deviceFp.Fd(), NBD_SET_BLKSIZE, uintptr(512))
 	ioctl(buseDevice.deviceFp.Fd(), NBD_CLEAR_QUE, 0)
 	ioctl(buseDevice.deviceFp.Fd(), NBD_CLEAR_SOCK, 0)
 	buseDevice.socketPair = sockPair
