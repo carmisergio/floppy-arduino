@@ -58,6 +58,7 @@ public:
     bool initialized;
 
     byte read_data(byte *buffer, unsigned int n);
+    byte read_data_serialout(byte *buffer, unsigned int n);
 
     // Constructor
     Floppy();
@@ -70,9 +71,14 @@ public:
     // Seek to track
     FloppyError seek(byte track);
 
+    // Find sector
+    FloppyError find_sector(byte cylinder, byte head, byte sector);
+
     // Read sector
     FloppyError read_sector(byte *buffer, byte cylinder, byte head, byte sector);
 
     // Run automatic motor off routines
     void auto_motor_off();
+
+    void test_serial();
 };

@@ -9,7 +9,7 @@
 
 #include "floppy.h"
 
-#define BAUD_RATE 115200
+#define BAUD_RATE 1000000
 
 class SerialInterface
 {

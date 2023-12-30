@@ -11,7 +11,7 @@ import (
 	"golang.org/x/term"
 )
 
-const BAUD_RATE int = 115200
+const BAUD_RATE int = 1000000
 
 const READ_TIMEOUT time.Duration = 1000 * time.Millisecond
 const READ_TIMEOUT_OP time.Duration = 5000 * time.Millisecond

@@ -6,9 +6,11 @@
  */
 
 #include "serial.h"
+#include "raw_serial.h"
 
 #define CMD_ACK 'A'
 #define CMD_READ_SECTOR 'R'
+#define CMD_DATA_INCOMING 'D'
 #define CMD_HANDSHAKE 'H'
 #define CMD_INITIALIZE 'I'
 #define CMD_ERROR 'E'
@@ -74,18 +76,13 @@ void SerialInterface::cmd_read_sector()
     // If there was an error
     if (ec != FloppyError::OK)
     {
+
         Serial.write(CMD_ERROR);
     }
     else
     {
-        // Fill buffer with given data
-        // for (int i = 0; i < SECTOR_SIZE; i++)
-        // {
-        //     buf[i + 1] = 'D';
-        // }
-        // Send back data
+        // Everything OK
         Serial.write(CMD_OK);
-        Serial.write(buf + 1, SECTOR_SIZE);
     }
 
     Serial.flush();
@@ -111,4 +108,14 @@ void SerialInterface::cmd_handshake()
     // Respond to handshake
     Serial.write(CMD_HANDSHAKE);
     Serial.flush();
+}
+
+void serial_send_byte_immediate(byte c)
+{
+    // Wait for data register to be empty
+    while (!(UCSR0A & (1 << UDRE0)))
+        ;
+
+    // Write data
+    UDR0 = c;
 }

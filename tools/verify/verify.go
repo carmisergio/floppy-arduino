@@ -10,7 +10,7 @@ import (
 	"github.com/albenik/go-serial"
 )
 
-const BAUD_RATE int = 115200
+const BAUD_RATE int = 1000000
 
 const READ_TIMEOUT time.Duration = 1000 * time.Millisecond
 const READ_TIMEOUT_OP time.Duration = 5000 * time.Millisecond
@@ -20,6 +20,7 @@ const CMD_ACK byte = 'A'
 const CMD_ERROR byte = 'E'
 const CMD_OK byte = 'O'
 const CMD_READ_SECTOR byte = 'R'
+const CMD_DATA_BEGIN byte = 'D'
 const CMD_HANDSHAKE byte = 'H'
 const CMD_INITIALIZE byte = 'I'
 
@@ -243,8 +244,27 @@ func do_read_sector(port serial.Port, cylinder byte, head byte, sector byte) ([]
 		return []byte{}, errors.New("no ACK")
 	}
 
-	// Read result
+	// Read first result
 	res, err = read_byte(port, READ_TIMEOUT_OP)
+
+	if err != nil {
+		return []byte{}, err
+	}
+
+	if res != CMD_DATA_BEGIN {
+		return []byte{}, errors.New("floppy read error")
+	}
+
+	// If arduino tells us to expect data, read data
+	var buf []byte
+	buf, err = read_bytes(port, SECTOR_SIZE+3, READ_TIMEOUT)
+
+	if err != nil {
+		return []byte{}, err
+	}
+
+	// Read second result
+	res, err = read_byte(port, READ_TIMEOUT)
 
 	if err != nil {
 		return []byte{}, err
@@ -254,15 +274,7 @@ func do_read_sector(port serial.Port, cylinder byte, head byte, sector byte) ([]
 		return []byte{}, errors.New("floppy read error")
 	}
 
-	// If result is OK, read data
-	var buf []byte
-	buf, err = read_bytes(port, SECTOR_SIZE, READ_TIMEOUT)
-
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return buf, nil
+	return buf[1 : SECTOR_SIZE+1], nil
 }
 
 func print_table_header() {
