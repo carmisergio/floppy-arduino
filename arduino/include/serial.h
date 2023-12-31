@@ -20,6 +20,9 @@ class SerialInterface
     // Read sector command handler
     void cmd_read_sector();
 
+    // Read block command handler
+    void cmd_read_blocks();
+
     // Handshake command handler
     void cmd_handshake();
 

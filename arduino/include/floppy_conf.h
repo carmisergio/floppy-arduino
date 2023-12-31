@@ -15,6 +15,7 @@
 
 ///////////////////////// GEOMETRY
 #define TRACKS 80
+#define HEADS 2
 #define SECTORS 18
 #define SECTOR_SIZE 512
 
@@ -22,3 +23,6 @@
 #define STEP_DELAY 10           // (ms)
 #define STEP_PULSE 1            // (ms)
 #define MOTOR_OFF_TIMEOUT 10000 // (ms)
+
+///////////////////////// BUFFERING
+#define MAX_READ_BLOCKS_AMOUNT 3

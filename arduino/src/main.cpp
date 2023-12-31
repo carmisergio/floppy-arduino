@@ -8,7 +8,7 @@
 
 #include "debug.h"
 
-byte buf[515];
+byte buf[SECTOR_DATA_SIZE * MAX_READ_BLOCKS_AMOUNT];
 
 Floppy floppy;
 SerialInterface serial_interface(&floppy, buf);
