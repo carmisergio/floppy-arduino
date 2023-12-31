@@ -8,6 +8,7 @@
 #include "floppy.h"
 
 #include "crc.h"
+#include "debug.h"
 
 asm("   .equ TIFR1,    0x16\n"  // timer 1 flag register
     "   .equ TIFR2,     0x17\n" // timer 2 flag register
@@ -379,6 +380,14 @@ FloppyError Floppy::read_sector(byte *buffer, byte cylinder, byte head, byte sec
 {
     FloppyError ec;
 
+    debug_print("Read sector: C=");
+    debug_print(cylinder);
+    debug_print(" H=");
+    debug_print(head);
+    debug_print(" S=");
+    debug_print(sector);
+    debug_print("\n");
+
     save_last_op_time();
 
     // Select head
@@ -391,7 +400,12 @@ FloppyError Floppy::read_sector(byte *buffer, byte cylinder, byte head, byte sec
     ec = seek(cylinder);
 
     if (ec != FloppyError::OK)
+    {
+        debug_print("Unable to seek: ");
+        debug_print(ec);
+        debug_print("\n");
         return ec;
+    }
 
     unsigned short attempts = 50;
     byte tmpbuf[7];
@@ -417,6 +431,9 @@ FloppyError Floppy::read_sector(byte *buffer, byte cylinder, byte head, byte sec
                                        // Serial.print("Seek error: ");
                                        // Serial.println(tmpbuf[1]);
                 interrupts();
+                debug_print("Seek error: ");
+                debug_print(ec);
+                debug_print("\n");
                 return FloppyError::SEEK_ERROR;
             }
 
@@ -434,6 +451,7 @@ FloppyError Floppy::read_sector(byte *buffer, byte cylinder, byte head, byte sec
     if (attempts == 0)
     {
         interrupts();
+        debug_print("Sector not found\n");
         return FloppyError::SECTOR_NOT_FOUND;
     }
 
@@ -442,6 +460,7 @@ FloppyError Floppy::read_sector(byte *buffer, byte cylinder, byte head, byte sec
     if (read_data(buffer, SECTOR_SIZE + 3) > 0)
     {
         interrupts();
+        debug_print("Read data no pulse\n");
         return FloppyError::NO_PULSE;
     }
 
@@ -449,16 +468,20 @@ FloppyError Floppy::read_sector(byte *buffer, byte cylinder, byte head, byte sec
     if (buffer[0] != 0xFB)
     {
         interrupts();
+        debug_print("Data mark incorrect\n");
         return FloppyError::INCORRECT_DATA_MARK;
     }
 
     interrupts();
 
     // Check CRC
-    if (calc_crc(buffer, 513) == 256u * buffer[513] + buffer[514])
-        return FloppyError::OK;
+    if (calc_crc(buffer, 513) != 256u * buffer[513] + buffer[514])
+    {
+        debug_print("CRC Error\n");
+        return FloppyError::CRC;
+    }
 
-    return FloppyError::CRC;
+    return FloppyError::OK;
 }
 
 void Floppy::auto_motor_off()

@@ -9,7 +9,7 @@
 #define PIN_DIR 7
 #define PIN_STEP 6
 #define PIN_TRACK0 5
-#define PIN_HEADSEL 4
+#define PIN_HEADSEL 9
 #define PIN_MOTOR 10
 #define PIN_READDATA 8 // Input capture pin for TIMER 1
 
