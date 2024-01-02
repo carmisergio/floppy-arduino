@@ -7,7 +7,7 @@
 #include "SoftwareSerial.h"
 
 // Comment this line to disable debug
-#define ENABLE_DEBUG
+// #define ENABLE_DEBUG
 
 #ifdef ENABLE_DEBUG
 

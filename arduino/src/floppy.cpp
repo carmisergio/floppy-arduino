@@ -23,6 +23,13 @@ asm("   .equ TIFR1,    0x16\n"  // timer 1 flag register
     "   .equ TCNT2,    0xB2\n"  // timer 2 current count register
 );
 
+void LBAtoCHS(byte &cylinder, byte &head, byte &sector, uint16_t address)
+{
+    cylinder = address / (SECTORS * HEADS);
+    head = (address / SECTORS) % HEADS;
+    sector = address % SECTORS + 1;
+}
+
 Floppy::Floppy()
 {
 
@@ -479,6 +486,34 @@ FloppyError Floppy::read_sector(byte *buffer, byte cylinder, byte head, byte sec
     {
         debug_print("CRC Error\n");
         return FloppyError::CRC;
+    }
+
+    return FloppyError::OK;
+}
+
+FloppyError Floppy::read_blocks(byte *buffer, uint16_t address, byte amount)
+{
+    // Check if read amount is valid
+    if (amount == 0 || amount > MAX_READ_BLOCKS_AMOUNT)
+        return FloppyError::INVALID_AMOUNT;
+
+    // Check if address is in range
+    if (address + amount > (TRACKS * HEADS * SECTORS))
+        return FloppyError::TRACK_OUT_OF_RANGE;
+
+    // Read all blocks
+    byte cylinder, head, sector;
+    for (byte blocks_read = 0; blocks_read < amount; blocks_read++)
+    {
+        // Get CHS address of block
+        LBAtoCHS(cylinder, head, sector, address + blocks_read);
+
+        // Perform read
+        // put data in different part of buffer depending on which block we're reading
+        FloppyError ec = read_sector(buffer + SECTOR_DATA_SIZE * blocks_read, cylinder, head, sector);
+
+        if (ec != FloppyError::OK)
+            return ec;
     }
 
     return FloppyError::OK;

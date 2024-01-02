@@ -11,6 +11,8 @@
 
 #include "floppy_conf.h"
 
+#define SECTOR_DATA_SIZE (SECTOR_SIZE + 3)
+
 // Floppy controller error codes
 enum FloppyError
 {
@@ -22,6 +24,7 @@ enum FloppyError
     INCORRECT_DATA_MARK,
     NO_PULSE,
     CRC,
+    INVALID_AMOUNT,
     OK,
 };
 
@@ -54,10 +57,11 @@ class Floppy
     // Save last operation time
     void save_last_op_time();
 
+    // Read data
+    byte read_data(byte *buffer, unsigned int n);
+
 public:
     bool initialized;
-
-    byte read_data(byte *buffer, unsigned int n);
 
     // Constructor
     Floppy();
@@ -72,6 +76,7 @@ public:
 
     // Read sector
     FloppyError read_sector(byte *buffer, byte cylinder, byte head, byte sector);
+    FloppyError read_blocks(byte *buffer, uint16_t address, byte amount);
 
     // Run automatic motor off routines
     void auto_motor_off();

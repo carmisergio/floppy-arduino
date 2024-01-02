@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -21,6 +22,7 @@ const CMD_ACK byte = 'A'
 const CMD_ERROR byte = 'E'
 const CMD_OK byte = 'O'
 const CMD_READ_SECTOR byte = 'R'
+const CMD_READ_BLOCKS byte = 'B'
 const CMD_HANDSHAKE byte = 'H'
 const CMD_INITIALIZE byte = 'I'
 
@@ -28,6 +30,7 @@ const TRACKS byte = 80
 const HEADS byte = 2
 const SECTORS byte = 18
 const SECTOR_SIZE uint = 512
+const READ_BLOCKS_MAX_AMOUNT byte = 3
 
 const N_BLOCKS uint = uint(TRACKS) * uint(HEADS) * uint(SECTORS)
 
@@ -105,6 +108,13 @@ func write_byte(port serial.Port, data byte) error {
 	return nil
 }
 
+func write_uint16(port serial.Port, data uint16) error {
+	buf := make([]byte, 2)
+	binary.LittleEndian.PutUint16(buf, data)
+
+	return write_bytes(port, buf)
+}
+
 func read_byte(port serial.Port, timeout time.Duration) (byte, error) {
 	// Read buffer of 1 byte
 	buf := make([]byte, 1)
@@ -162,6 +172,22 @@ func read_bytes(port serial.Port, n_bytes uint, timeout time.Duration) ([]byte, 
 
 	port.SetReadTimeout(-1)
 	return buf, nil
+}
+
+func write_bytes(port serial.Port, data []byte) error {
+	written := uint(0)
+
+	for written < uint(len(data)) {
+		n, err := port.Write(data[written:])
+
+		if err != nil {
+			return err
+		}
+
+		written += uint(n)
+	}
+
+	return nil
 }
 
 func do_handshake(port serial.Port) error {
@@ -280,16 +306,14 @@ func do_initialize(port serial.Port) error {
 	return nil
 }
 
-func do_read_sector(port serial.Port, cylinder byte, head byte, sector byte) ([]byte, error) {
-
+func do_read_blocks(port serial.Port, address uint16, amount byte) ([]byte, error) {
 	var res byte
 	var err error
 
-	// Send read sector command
-	write_byte(port, CMD_READ_SECTOR)
-	write_byte(port, cylinder)
-	write_byte(port, head)
-	write_byte(port, sector)
+	// Send read block command
+	write_byte(port, CMD_READ_BLOCKS)
+	write_uint16(port, address)
+	write_byte(port, amount)
 
 	// Expect ACK
 	res, err = read_byte(port, READ_TIMEOUT)
@@ -315,42 +339,26 @@ func do_read_sector(port serial.Port, cylinder byte, head byte, sector byte) ([]
 
 	// If result is OK, read data
 	var buf []byte
-	buf, err = read_bytes(port, SECTOR_SIZE, READ_TIMEOUT)
+	buf, err = read_bytes(port, SECTOR_SIZE*uint(amount), READ_TIMEOUT)
 
 	if err != nil {
 		return []byte{}, err
 	}
 
 	return buf, nil
+
 }
 
-func LBAtoCHS(address uint) (byte, byte, byte) {
-	var cylinder, head, sector byte
-
-	// Calulcate results
-	cylinder = byte(address / (uint(SECTORS) * uint(HEADS)))
-	head = byte((address / uint(SECTORS)) % uint(HEADS))
-	sector = byte(address%uint(SECTORS)) + 1 // First sector is 1
-
-	return cylinder, head, sector
-}
-
-// Read sector with logical block addressing
-func read_block(port serial.Port, address uint, retries byte) ([]byte, error) {
+func retry_read_blocks(port serial.Port, address uint16, amount byte, retries uint) ([]byte, error) {
 
 	var data []byte
 	var err error
 
-	// Convert LBA to CHS addressing
-	cylinder, head, sector := LBAtoCHS(address)
-
 	// Always do at least 1 try
 	retries++
 
-	// fmt.Printf("Reading C=%d, H=%d, S=%d\n", cylinder, head, sector)
-
 	for retries > 0 {
-		data, err = do_read_sector(port, cylinder, head, sector)
+		data, err = do_read_blocks(port, address, amount)
 
 		if err == nil {
 			return data, nil
@@ -380,9 +388,11 @@ func read_all_blocks(port serial.Port, start_block OptionalUint, end_block Optio
 
 	update_progress_bar(0, n_blocks)
 
-	for i := uint(0); i < n_blocks; i++ {
+	for i := uint(0); i < n_blocks; {
 
-		block, err := read_block(port, i+start_block.value, byte(retries.value))
+		amount := byte(min(uint(READ_BLOCKS_MAX_AMOUNT), n_blocks-i))
+
+		blocksr, err := retry_read_blocks(port, uint16(i+start_block.value), amount, retries.value)
 
 		if err != nil {
 
@@ -390,7 +400,8 @@ func read_all_blocks(port serial.Port, start_block OptionalUint, end_block Optio
 			if ignore_errors {
 				print_log_message(fmt.Sprintf("%s read error on block %d", FmtCol("Warning: ", ColorYellowHI), i+start_block.value))
 				update_progress_bar(i+1, n_blocks)
-				n_errors++
+				i += uint(amount)
+				n_errors += uint(amount)
 				continue
 			}
 
@@ -399,10 +410,12 @@ func read_all_blocks(port serial.Port, start_block OptionalUint, end_block Optio
 
 		// Copy read block in file buffer
 		start := i * SECTOR_SIZE
-		end := start + SECTOR_SIZE
-		copy(blocks[start:end], block)
+		end := start + SECTOR_SIZE*uint(amount)
+		copy(blocks[start:end], blocksr)
 
-		update_progress_bar(i+1, n_blocks)
+		i += uint(amount)
+
+		update_progress_bar(i, n_blocks)
 	}
 
 	return blocks, n_errors, nil
