@@ -26,7 +26,7 @@ const MSG_BAD_OPTION string = "verify: bad option"
 const MSG_TRY_HELP string = "Try 'verify --help' for more information"
 
 // Deafaults
-const DEFAULT_MAX_RETRIES uint = 1
+const DEFAULT_MAX_RETRIES uint = 0
 
 type OptionalString struct {
 	value     string
