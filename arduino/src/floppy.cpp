@@ -21,7 +21,16 @@ asm("   .equ TIFR1,    0x16\n"  // timer 1 flag register
     "   .equ ICRL1,    0x86\n"  // timer 1 input capture register (low byte)
     "   .equ OCRL1,    0x88\n"  // timer 1 output compare register (low byte)
     "   .equ TCNT2,    0xB2\n"  // timer 2 current count register
-);
+    "   .equ OCF1A,    1\n"     // output compare flag 1 A
+    "   .equ PORTB,    0x05\n"  // GPIO port B
+    "   .equ PORTB2,   2\n\t"   // Port B bit 2 -> Pin 10
+    "   .equ    UDR0,       0xC6\n\t"
+    "   .equ    TCCR1A,     0x80\n\t"
+    "   .equ    TCCR1C,     0x82\n\t"
+    "   .equ    COM1B1,     5\n\t"
+    "   .equ    COM1B0,     4\n\t"
+    "   .equ    FOC1B,      6\n\t"
+    "   .equ    OCF1B,      2\n\t");
 
 void LBAtoCHS(byte &cylinder, byte &head, byte &sector, uint16_t address)
 {
@@ -32,7 +41,6 @@ void LBAtoCHS(byte &cylinder, byte &head, byte &sector, uint16_t address)
 
 Floppy::Floppy()
 {
-
     initialized = false;
     cur_track = 0;
     motor_on = false;
@@ -81,7 +89,6 @@ void Floppy::step(unsigned short n)
 
 bool Floppy::go_to_track_0()
 {
-
     select_drive(true);
     set_direction(false);
 
@@ -105,7 +112,6 @@ bool Floppy::go_to_track_0()
 
 byte Floppy::read_data(byte *buffer, unsigned int n)
 {
-
     // Setup timer 1 for pulse timing (prescaler = 1, input capture on falling edge)
     TCCR1A = 0;
     TCCR1B = bit(CS10);
@@ -318,6 +324,107 @@ byte Floppy::read_data(byte *buffer, unsigned int n)
     return ec;
 }
 
+void Floppy::write_data()
+{
+    // We need precise timing, so we can't have interrupts
+    cli();
+
+    // Stop timer
+    TCCR1B = 0;
+    TCCR1A = 0;
+
+    // Clear WGM output
+    // TCCR1A = bit(COM1B1); // Compare output B (pin 10) CLEAR (low) on compare match
+    // TCCR1C = bit(FOC0B);  // Clear output
+
+    // Set up timing
+    // OCR1A = 16; // MFM symbol period (data bit OR clock bit)
+    // OCR1B = 4;  // Write pulse length
+    OCR1A = 160; // MFM symbol period (data bit OR clock bit)
+    OCR1B = 40;  // Write pulse length
+
+    // TCCR1A = bit(COM1B0) | bit(COM1B1); // Compare output B (pin 10) SET (HIGH) on compare match
+    // TCCR1A = bit(COM1B0); // Compare output B (pin 10) TOGGLE on compare match
+
+    TCNT1 = 0;    // Reset counter
+    TIFR1 = 0xFF; // Clear all flags
+
+    // Start timer
+    // TCCR1B = bit(WGM12) | bit(CS10);             // CTC mode, prescaler = 1
+    TCCR1B = bit(WGM12) | bit(CS12); // CTC mode, prescaler = 1024
+    // TCCR1B = bit(WGM12) | bit(CS11) | bit(CS10); // CTC mode, prescaler = 64
+
+    // while (true)
+    // {
+    //     // delay(1);
+
+    //     // Wait for ouptut compare A
+    //     while (!(TIFR1 & bit(OCF1A)))
+    //         ;
+
+    //     TIFR1 |= bit(OCF1A) | bit(OCF1B);
+
+    //     // Pin 10 -> Low
+    //     TCCR1A = bit(COM1B1); // Compare output B (pin 10) CLEAR (low) on compare match
+    //     TCCR1C = bit(FOC1B);  // Force compare match
+
+    //     // Reset output compare settings
+    //     TCCR1A = bit(COM1B0) | bit(COM1B1); // Compare output B (pin 10) SET (HIGH) on compare match
+    // }
+    //
+
+    asm volatile(
+        //
+        // Waits for the next MFM symbol period to start (Wait for output compare A),
+        // then if value is 1 sets the write pin (OC1B pin) to LOW, causing a pulse.
+        // The value of the write pin will be automatically reset by the timer after the
+        // specified pulse time.
+        //
+        // Arguments:
+        //  - val: 1 -> write pulse, 0 -> don't write pulse
+        //  Clobbers:
+        ".macro WRTPULSE val:req\n\t"
+        "   0:          sbis        TIFR1, OCF1A\n\t" // Wait for next MFM period
+        "               rjmp        0b\n\t"
+        // "               nop\n\t"
+        "               sbi         TIFR1, OCF1A\n\t" // Clear output compare flag
+        "   .if \\val == 1\n\t"
+        "               sts         TCCR1A, r16\n\t" // Compare output B (pin 10) CLEAR (low) on compare match
+        "               sts         TCCR1C, r18\n\r" // Force output compare
+        "               sts         TCCR1A, r17\n\t" // Reset output compare settings
+        "   .endif\n\t"
+        // "               ldi         r20, '.'\n\t"
+        // "               sts         UDR0, r20\n\t"
+        ".endm\n\t"
+
+        // Prepare timer control constants
+        "               ldi         r16, (1 << COM1B1)\n\t"                 // TCCR1A -> Output compare B CLEAR on compare match
+        "               ldi         r17, (1 << COM1B1) | (1 << COM1B0)\n\t" // TCCR1A -> Output compare B SET on compare match
+        "               ldi         r18, (1 << FOC1B)\n\r"                  // TCCR1C -> Force output compare B
+        "               ldi         r19, (1 << OCF1A) | (1 << OCF1B)\n\t"   // TIFR1 -> Clear output compare A flag
+
+        // // Write stream of 1010101010... in MFM
+        "   write_lp:   WRTPULSE    1\n\t"
+        "               WRTPULSE    1\n\t"
+        "               WRTPULSE    0\n\t"
+        "               rjmp        write_lp\n\t"
+
+        :
+        :
+        : "r2", "r16", "r17", "r19", "r20");
+
+    // UDR0 = '.';
+
+    // Stop TIMER 1
+    TCCR1A = 0;
+    TCCR1B = 0;
+    TCCR1C = 0;
+
+    sei();
+
+    Serial.println("END");
+}
+
 void Floppy::save_last_op_time()
 {
     last_op_time = millis();
@@ -334,6 +441,10 @@ void Floppy::setup()
     pinMode(PIN_TRACK0, INPUT_PULLUP);
     pinMode(PIN_READDATA, INPUT_PULLUP);
 
+    // Make sure write line is high (inactive) before setting it to low impedance mode
+    PORTB |= bit(PORTB2); // PIN 10 -> HIGH
+    DDRB |= bit(PORTB2);  // PIN 10 -> OUTPUT
+
     motor_on = true;
     set_motor_state(false);
     select_drive(false);
@@ -342,7 +453,6 @@ void Floppy::setup()
 
 FloppyError Floppy::initialize()
 {
-
     // Go to track 0
     if (!go_to_track_0())
         return FloppyError::TRACK0_NOT_FOUND;

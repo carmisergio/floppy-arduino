@@ -57,11 +57,13 @@ class Floppy
     // Save last operation time
     void save_last_op_time();
 
-    // Read data
+    // Read write data
     byte read_data(byte *buffer, unsigned int n);
 
 public:
     bool initialized;
+
+    void write_data();
 
     // Constructor
     Floppy();

@@ -25,6 +25,8 @@ void setup()
     floppy.setup();
 
     debug_print("READY!\n");
+
+    floppy.write_data();
 }
 
 void loop()

@@ -1,7 +1,7 @@
 #pragma once
 
-#define DEBUG_TX_PIN 4
-#define DEBUG_RX_PIN 3
+#define DEBUG_TX_PIN 3
+#define DEBUG_RX_PIN 2
 #define DEBUG_BAUD 115200
 
 #include "SoftwareSerial.h"

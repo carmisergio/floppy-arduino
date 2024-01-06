@@ -9,9 +9,10 @@
 #define PIN_DIR 7
 #define PIN_STEP 6
 #define PIN_TRACK0 5
-#define PIN_HEADSEL 9
-#define PIN_MOTOR 10
-#define PIN_READDATA 8 // Input capture pin for TIMER 1
+#define PIN_HEADSEL 4
+#define PIN_MOTOR 9
+#define PIN_READDATA 8   // Input capture pin for TIMER 1
+#define PIN_WRITEDATA 10 // Output compare pin B for TIMER 1
 
 ///////////////////////// GEOMETRY
 #define TRACKS 80
@@ -25,4 +26,4 @@
 #define MOTOR_OFF_TIMEOUT 10000 // (ms)
 
 ///////////////////////// BUFFERING
-#define MAX_READ_BLOCKS_AMOUNT 3
+#define MAX_READ_BLOCKS_AMOUNT 1
