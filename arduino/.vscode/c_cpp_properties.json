@@ -10,12 +10,12 @@
             "includePath": [
                 "/home/sergio/dev/floppy-arduino/arduino/include",
                 "/home/sergio/dev/floppy-arduino/arduino/src",
+                "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src",
                 "/home/sergio/.platformio/packages/framework-arduino-avr/cores/arduino",
                 "/home/sergio/.platformio/packages/framework-arduino-avr/variants/standard",
                 "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/EEPROM/src",
                 "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/HID/src",
                 "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/SPI/src",
-                "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src",
                 "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/Wire/src",
                 ""
             ],
@@ -24,12 +24,12 @@
                 "path": [
                     "/home/sergio/dev/floppy-arduino/arduino/include",
                     "/home/sergio/dev/floppy-arduino/arduino/src",
+                    "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src",
                     "/home/sergio/.platformio/packages/framework-arduino-avr/cores/arduino",
                     "/home/sergio/.platformio/packages/framework-arduino-avr/variants/standard",
                     "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/EEPROM/src",
                     "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/HID/src",
                     "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/SPI/src",
-                    "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src",
                     "/home/sergio/.platformio/packages/framework-arduino-avr/libraries/Wire/src",
                     ""
                 ]
