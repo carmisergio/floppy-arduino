@@ -20,7 +20,7 @@
 #define SECTOR_SIZE 512
 
 ///////////////////////// TIMINGS
-#define STEP_DELAY 10           // (ms)
+#define STEP_DELAY 2            // (ms)
 #define STEP_PULSE 1            // (ms)
 #define MOTOR_OFF_TIMEOUT 10000 // (ms)
 
