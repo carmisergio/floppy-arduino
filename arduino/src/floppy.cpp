@@ -383,19 +383,26 @@ void Floppy::write_data()
         // Arguments:
         //  - val: 1 -> write pulse, 0 -> don't write pulse
         //  Clobbers:
+        // Time:
+        //  - val=0 -> 4 clock cycles after MFM symbol start
+        //  - val=1 -> 10 clock cycles after MFM symbol start
+
         ".macro WRTPULSE val:req\n\t"
-        "   0:          sbis        TIFR1, OCF1A\n\t" // Wait for next MFM period
+        "   0:          sbis        TIFR1, OCF1A\n\t" // (2) Wait for next MFM period
         "               rjmp        0b\n\t"
         // "               nop\n\t"
-        "               sbi         TIFR1, OCF1A\n\t" // Clear output compare flag
+        "               sbi         TIFR1, OCF1A\n\t" // (2) Clear output compare flag
         "   .if \\val == 1\n\t"
-        "               sts         TCCR1A, r16\n\t" // Compare output B (pin 10) CLEAR (low) on compare match
-        "               sts         TCCR1C, r18\n\r" // Force output compare
-        "               sts         TCCR1A, r17\n\t" // Reset output compare settings
+        "               sts         TCCR1A, r16\n\t" // (2) Compare output B (pin 10) CLEAR (low) on compare match
+        "               sts         TCCR1C, r18\n\r" // (2) Force output compare
+        "               sts         TCCR1A, r17\n\t" // (2) Reset output compare settings
         "   .endif\n\t"
         // "               ldi         r20, '.'\n\t"
         // "               sts         UDR0, r20\n\t"
         ".endm\n\t"
+
+        // NOTE: the timing difference between 0 pulse and 1 pulse would mean that it's impossible to do any processing between a 1 bit and the next bit
+        // Allowed sequences would be 10, 100, 00
 
         // Prepare timer control constants
         "               ldi         r16, (1 << COM1B1)\n\t"                 // TCCR1A -> Output compare B CLEAR on compare match
